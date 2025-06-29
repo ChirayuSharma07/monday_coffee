@@ -1,0 +1,195 @@
+-- creaung database
+
+create database monday_coffee;
+use monday_coffee;
+
+
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS city;
+
+-- Import Rules
+-- 1st import to city
+-- 2nd import to products
+-- 3rd import to customers
+-- 4th import to sales
+
+create table CITY (
+CITY_ID INT primary KEY,
+CITY_NAME varchar (20),
+POPULATION bigint,
+ESTIMATED_RENT float,
+city_rank int
+);
+
+create table customers (
+customer_id int primary key,
+customer_name varchar (30),
+city_id int,
+CONSTRAINT fk_city FOREIGN KEY (city_id) REFERENCES city(city_id)
+);
+
+create table product (
+product_id int primary key,
+product_name varchar (40),
+price float
+);
+
+create table sales (
+sale_id int primary key,
+sales_date date,
+product_id int,
+customer_id int,
+total float,
+rating int,
+constraint fk_ FOREIGN KEY (product_id) REFERENCES product(product_id),
+	CONSTRAINT fk_customers FOREIGN KEY (customer_id) REFERENCES customers(customer_id) 
+);
+
+select * from city;
+select * from product;
+select * from customers;
+select * from sales;
+
+-- Reports & Data Analysis
+
+
+-- Q.1 Coffee Consumers Count
+-- How many people in each city are estimated to consume coffee, given that 25% of the population does?
+
+SELECT
+  city_name,
+  ROUND( (population * 0.25) / 1000000, 2) AS coffee_consumers_in_millions,
+  city_rank
+FROM
+  city
+ORDER BY
+  2 DESC;
+  
+  -- -- Q.2
+-- Total Revenue from Coffee Sales
+-- What is the total revenue generated from coffee sales across all cities in the last quarter of 2023?
+
+SELECT SUM(total) AS total_revenue
+FROM sales
+WHERE YEAR(sales_date) = 2023
+  AND QUARTER(sales_date) = 4;
+
+SELECT
+ci.city_name,
+ SUM(total) AS total_revenue
+FROM sales as s
+join customers as c on s.customer_id = c.customer_id
+join city as ci on ci.city_id = c.city_id
+WHERE YEAR(s.sales_date) = 2023
+  AND QUARTER(s.sales_date) = 4
+group by ci.city_name
+order by total_revenue desc;
+
+- Q.3
+-- Sales Count for Each Product
+-- How many units of each coffee product have been sold?
+
+SELECT 
+    p.product_id,
+    p.product_name,
+    COUNT(s.sale_id) AS total_sales
+FROM product AS p
+LEFT JOIN sales AS s
+ ON s.product_id = p.product_id
+ GROUP BY 1
+ORDER BY 2 DESC
+
+-- Q.4
+-- Average Sales Amount per City
+-- What is the average sales amount per customer in each city?
+
+SELECT 
+    ci.city_name,
+    SUM(s.total) AS total_revenue,
+    COUNT(DISTINCT s.customer_id) AS total_cx,
+    ROUND(
+        SUM(s.total) / COUNT(DISTINCT s.customer_id), 2
+    ) AS avg_sale_pr_cx
+FROM sales AS s
+JOIN customers AS c ON s.customer_id = c.customer_id
+JOIN city AS ci ON ci.city_id = c.city_id
+GROUP BY ci.city_name
+ORDER BY total_revenue DESC;
+
+-- -- Q.5
+-- City Population and Coffee Consumers (25%)
+-- Provide a list of cities along with their populations and estimated coffee consumers.
+-- return city_name, total current cx, estimated coffee consumers (25%)
+
+WITH city_table AS (
+    SELECT 
+        city_name,
+        ROUND((population * 0.25) / 1000000, 2) AS coffee_consumers
+    FROM city
+),
+customers_table AS (
+    SELECT 
+        ci.city_name,
+        COUNT(DISTINCT c.customer_id) AS unique_cx
+    FROM sales AS s
+    JOIN customers AS c ON c.customer_id = s.customer_id
+    JOIN city AS ci ON ci.city_id = c.city_id
+    GROUP BY ci.city_name
+)
+
+SELECT 
+    ct.city_name,
+    ct.coffee_consumers AS coffee_consumer_in_millions,
+    cust.unique_cx
+FROM city_table AS ct
+JOIN customers_table AS cust ON ct.city_name = cust.city_name;
+
+-- Q6
+-- Top Selling Products by City
+-- What are the top 3 selling products in each city based on sales volume?
+
+WITH ProductSalesByCity AS (
+    -- First, calculate the sales volume for each product in each city.
+    -- Sales volume is determined by counting the number of sales records.
+    SELECT
+        c.city_name,
+        p.product_name,
+        COUNT(s.sale_id) AS sales_volume
+    FROM
+        sales s
+    JOIN
+        customers cu ON s.customer_id = cu.customer_id
+    JOIN
+        city c ON cu.city_id = c.city_id
+    JOIN
+        product p ON s.product_id = p.product_id
+    GROUP BY
+        c.city_name,
+        p.product_name
+),
+RankedSales AS (
+    -- Next, rank the products within each city based on their sales volume.
+    -- We use RANK() to handle ties appropriately.
+    SELECT
+        city_name,
+        product_name,
+        sales_volume,
+        RANK() OVER (PARTITION BY city_name ORDER BY sales_volume DESC) as rnk
+    FROM
+        ProductSalesByCity
+)
+-- Finally, select the top 3 ranked products for each city.
+SELECT
+    city_name,
+    product_name,
+    sales_volume
+FROM
+    RankedSales
+WHERE
+    rnk <= 3
+ORDER BY
+    city_name ASC,
+    sales_volume DESC;
+
